@@ -38,20 +38,20 @@ low, high = get_range_for_difficulty(difficulty)
 st.sidebar.caption(f"Range: {low} to {high}")
 st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
 
-if "secret" not in st.session_state:
+# FIX (Bug 3): "New Game" used to reset only attempts and secret, so status
+# stayed "won"/"lost" and the st.stop() guard below killed the app forever.
+# Starting a round now happens in exactly one place, so the initial game and
+# every restart are guaranteed to set the same five keys.
+def start_new_round(low: int, high: int):
     st.session_state.secret = random.randint(low, high)
-
-if "attempts" not in st.session_state:
-    st.session_state.attempts = 1
-
-if "score" not in st.session_state:
+    st.session_state.attempts = 0
     st.session_state.score = 0
+    st.session_state.status = "playing"
+    st.session_state.history = []
+
 
 if "status" not in st.session_state:
-    st.session_state.status = "playing"
-
-if "history" not in st.session_state:
-    st.session_state.history = []
+    start_new_round(low, high)
 
 st.subheader("Make a guess")
 
@@ -81,9 +81,9 @@ with col3:
     show_hint = st.checkbox("Show hint", value=True)
 
 if new_game:
-    st.session_state.attempts = 0
-    st.session_state.secret = random.randint(1, 100)
-    st.success("New game started.")
+    # FIX (Bug 3): was random.randint(1, 100) regardless of difficulty, so an
+    # Easy round (1-20) could be handed an unreachable secret.
+    start_new_round(low, high)
     st.rerun()
 
 if st.session_state.status != "playing":
