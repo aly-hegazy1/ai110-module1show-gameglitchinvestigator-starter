@@ -91,3 +91,43 @@ def test_win_on_first_attempt_scores_90():
 
 def test_win_score_never_drops_below_10():
     assert update_score(0, "Win", 50) == 10
+
+
+# --- Bug 6: range was cosmetic, never enforced, and Hard was unwinnable ----
+
+import math
+
+from logic_utils import get_range_for_difficulty, parse_guess
+
+
+def test_guess_above_the_range_is_rejected():
+    # Easy is 1-20, so 500 must not be accepted as a playable guess.
+    ok, value, err = parse_guess("500", 1, 20)
+    assert ok is False
+    assert value is None
+    assert "between 1 and 20" in err
+
+
+def test_negative_guess_is_rejected():
+    ok, _, err = parse_guess("-7", 1, 100)
+    assert ok is False
+    assert "between 1 and 100" in err
+
+
+def test_guess_on_the_boundary_is_accepted():
+    assert parse_guess("1", 1, 20) == (True, 1, None)
+    assert parse_guess("20", 1, 20) == (True, 20, None)
+
+
+def test_parse_guess_still_works_without_bounds():
+    # Bounds are optional so the starter behaviour is unchanged.
+    assert parse_guess("42") == (True, 42, None)
+
+
+def test_every_difficulty_is_actually_winnable():
+    # Hard used to be 1-50 with 5 attempts, but binary search needs 6 there.
+    limits = {"Easy": 6, "Normal": 8, "Hard": 7}
+    for difficulty, allowed in limits.items():
+        low, high = get_range_for_difficulty(difficulty)
+        needed = math.ceil(math.log2(high - low + 1))
+        assert allowed >= needed, f"{difficulty} needs {needed} but allows {allowed}"

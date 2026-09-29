@@ -26,10 +26,13 @@ difficulty = st.sidebar.selectbox(
     index=1,
 )
 
+# FIX (Bug 6): Hard gave 5 attempts over a 1-50 range, but binary search needs
+# 6 there -- it could not be won. Every difficulty is now solvable with perfect
+# play: Easy needs 5 of 6, Normal needs 7 of 8, Hard needs 7 of 7.
 attempt_limit_map = {
     "Easy": 6,
     "Normal": 8,
-    "Hard": 5,
+    "Hard": 7,
 }
 attempt_limit = attempt_limit_map[difficulty]
 
@@ -55,8 +58,10 @@ if "status" not in st.session_state:
 
 st.subheader("Make a guess")
 
+# FIX (Bug 6): this said "between 1 and 100" no matter what, even on Easy
+# where the range is 1-20. It now reports the difficulty's actual range.
 st.info(
-    f"Guess a number between 1 and 100. "
+    f"Guess a number between {low} and {high}. "
     f"Attempts left: {attempt_limit - st.session_state.attempts}"
 )
 
@@ -94,7 +99,7 @@ if st.session_state.status != "playing":
     st.stop()
 
 if submit:
-    ok, guess_int, err = parse_guess(raw_guess)
+    ok, guess_int, err = parse_guess(raw_guess, low, high)
 
     if not ok:
         # FIX (Bug 4): the counter used to be incremented before this check, so

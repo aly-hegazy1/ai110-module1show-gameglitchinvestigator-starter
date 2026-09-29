@@ -11,16 +11,23 @@ def get_range_for_difficulty(difficulty: str):
         return 1, 20
     if difficulty == "Normal":
         return 1, 100
+    # FIX (Bug 6): Hard used to return (1, 50) with only 5 attempts. A perfect
+    # binary search over 50 numbers needs ceil(log2(50)) = 6 guesses, so Hard
+    # was literally unwinnable, not merely difficult. Hard now shares Normal's
+    # 1-100 range and is made hard by getting one fewer attempt (7, see
+    # attempt_limit_map in app.py), which is exactly ceil(log2(100)) = 7:
+    # winnable with perfect play and no margin for a wasted guess.
     if difficulty == "Hard":
-        return 1, 50
+        return 1, 100
     return 1, 100
 
 
-def parse_guess(raw: str):
+def parse_guess(raw: str, low: int = None, high: int = None):
     """
     Parse user input into an int guess.
 
-    Returns: (ok: bool, guess_int: int | None, error_message: str | None)
+    If low and high are given, the guess must fall inside that inclusive
+    range. Returns: (ok: bool, guess_int: int | None, error_message: str | None)
     """
     if raw is None:
         return False, None, "Enter a guess."
@@ -35,6 +42,12 @@ def parse_guess(raw: str):
             value = int(raw)
     except Exception:
         return False, None, "That is not a number."
+
+    # FIX (Bug 6): nothing ever compared the guess to the range, so 500 and -7
+    # were accepted as valid guesses on an Easy round of 1-20 and cost a turn.
+    if low is not None and high is not None:
+        if value < low or value > high:
+            return False, None, f"Guess must be between {low} and {high}."
 
     return True, value, None
 
