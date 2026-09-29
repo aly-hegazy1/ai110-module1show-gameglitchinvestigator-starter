@@ -81,22 +81,25 @@ def get_hint_message(outcome: str):
     return ""
 
 
-# NOTE: Moved verbatim from app.py - NOT yet fixed. This still awards +5 for a
-# "Too High" guess on an even attempt (see reflection.md section 1, Bug 5).
+# FIX (Bug 5): "Too High" used to ADD 5 points whenever attempt_number was
+# even, so guessing too high on an even turn scored the same as being right.
+# Both wrong outcomes now cost the same 5 points. The win payout also used
+# (attempt_number + 1), which double-counted the turn you are currently on.
 def update_score(current_score: int, outcome: str, attempt_number: int):
-    """Update score based on outcome and attempt number."""
+    """
+    Update score based on outcome and attempt number.
+
+    attempt_number is 1 for the first guess. Winning on the first guess is
+    worth 90 points and each further attempt costs 10, with a floor of 10.
+    A wrong guess costs 5 points regardless of which direction it missed.
+    """
     if outcome == "Win":
-        points = 100 - 10 * (attempt_number + 1)
+        points = 100 - 10 * attempt_number
         if points < 10:
             points = 10
         return current_score + points
 
-    if outcome == "Too High":
-        if attempt_number % 2 == 0:
-            return current_score + 5
-        return current_score - 5
-
-    if outcome == "Too Low":
+    if outcome in ("Too High", "Too Low"):
         return current_score - 5
 
     return current_score

@@ -94,14 +94,14 @@ if st.session_state.status != "playing":
     st.stop()
 
 if submit:
-    st.session_state.attempts += 1
-
     ok, guess_int, err = parse_guess(raw_guess)
 
     if not ok:
-        st.session_state.history.append(raw_guess)
+        # FIX (Bug 4): the counter used to be incremented before this check, so
+        # a typo burned a turn and pushed the raw text into the history list.
         st.error(err)
     else:
+        st.session_state.attempts += 1
         st.session_state.history.append(guess_int)
 
         # FIX (Bug 2, root cause): this used to cast the secret to str on every

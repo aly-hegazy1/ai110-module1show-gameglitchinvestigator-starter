@@ -65,3 +65,29 @@ def test_string_secret_raises_instead_of_comparing_as_text():
     # rather than quietly comparing the two values alphabetically.
     with pytest.raises(TypeError):
         check_guess(9, "50")
+
+
+# --- Bug 5: scoring rewarded wrong guesses --------------------------------
+
+from logic_utils import update_score
+
+
+def test_too_high_costs_points_on_an_even_attempt():
+    # The old code returned 105 here: "Too High" on an even attempt ADDED 5.
+    assert update_score(100, "Too High", 2) == 95
+
+
+def test_both_wrong_directions_cost_the_same():
+    assert update_score(100, "Too High", 4) == update_score(100, "Too Low", 4)
+
+
+def test_winning_sooner_scores_higher():
+    assert update_score(0, "Win", 1) > update_score(0, "Win", 5)
+
+
+def test_win_on_first_attempt_scores_90():
+    assert update_score(0, "Win", 1) == 90
+
+
+def test_win_score_never_drops_below_10():
+    assert update_score(0, "Win", 50) == 10
