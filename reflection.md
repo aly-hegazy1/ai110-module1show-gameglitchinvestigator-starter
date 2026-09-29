@@ -8,6 +8,10 @@ The first time I ran `python -m streamlit run app.py` the game *looked* finished
 
 Here are the concrete bugs I found, with what I expected versus what actually happened.
 
+*(All line numbers below refer to the original starter code, before any fixes. The
+logic has since moved into `logic_utils.py`, so they will not match the current
+files — see the commit history for what changed where.)*
+
 **Bug 1 — The hint text is inverted** ([app.py:37-40](app.py#L37-L40))
 
 *Expected:* if my guess is above the secret, the game tells me to go LOWER.
@@ -105,7 +109,7 @@ def test_same_guess_always_gives_the_same_outcome():
 
 It is almost embarrassingly simple and it does not even mention strings or types, but it captures the actual user-visible complaint — "the game keeps changing its mind" — rather than the implementation detail. `test_single_digit_guess_below_secret_is_too_low` and `test_three_digit_guess_above_secret_is_too_high` back it up by pinning the two specific numbers where alphabetical and numeric ordering disagree (`"9" > "50"` and `"100" < "50"`), since a test using 60 and 40 would pass on the broken code by luck.
 
-The step that actually convinced me was running the new tests against the **old** code. I pulled the original `check_guess` out with `git show HEAD:app.py` and checked each new assertion against it: all five failed, which proved the tests were testing something real. Then on the fixed code the full suite went from `3 failed in 0.02s` (everything erroring on `NotImplementedError` because `logic_utils.py` was still stubs) to `9 passed in 0.02s`. Finally I ran `python -m streamlit run app.py`, confirmed the app boots with no exceptions in the log and serves normally, and played a round with the Developer Debug Info panel open so I could see the secret and watch each hint point toward it instead of away from it.
+The step that actually convinced me was running the new tests against the **old** code. I pulled the original `check_guess` out with `git show HEAD:app.py` and checked each new assertion against it: all five failed, which proved the tests were testing something real. Then on the fixed code the suite went from `3 failed in 0.02s` (everything erroring on `NotImplementedError` because `logic_utils.py` was still stubs) to green. As I fixed the remaining bugs I kept adding tests the same way, and the suite finished at **19 passed**. Finally I ran `python -m streamlit run app.py`, confirmed the app boots with no exceptions in the log and serves normally, and played a round with the Developer Debug Info panel open so I could see the secret and watch each hint point toward it instead of away from it.
 
 AI helped most with test *design*, not test *writing*. Writing these three assertions is easy; knowing that `9` and `100` are the interesting inputs required understanding why string comparison disagrees with numeric comparison, and that came out of the explanation I got when I asked why the same guess flipped. It also pushed me toward `pytest.raises(TypeError)` as a way to lock in a decision — the test exists specifically so that nobody "helpfully" adds `int()` coercion back into `check_guess` later.
 
@@ -113,13 +117,72 @@ AI helped most with test *design*, not test *writing*. Writing these three asser
 
 ## 4. What did you learn about Streamlit and state?
 
-- How would you explain Streamlit "reruns" and session state to a friend who has never used Streamlit?
+The way I'd explain it to a friend: a normal web app updates the one thing you
+clicked. Streamlit doesn't. Every time you touch *anything* — press a button,
+type in a box, change a dropdown — Streamlit throws the whole page away and runs
+your Python file again from line 1 to the bottom. There is no "on click"
+handler; `if st.button("Submit"):` is just a line that happens to be `True` on
+the one rerun where the button was pressed. So an ordinary variable is useless
+across clicks: `secret = random.randint(1, 100)` would draw a brand new number
+on every single interaction, because that line genuinely runs again every time.
+
+`st.session_state` is the one thing that survives a rerun. It's a dictionary
+that lives outside the script, so the `if "status" not in st.session_state:`
+guard is the whole trick — the body runs once on the first load and is skipped
+on every rerun after that, which is how the secret stays put.
+
+What actually surprised me was that *storing* state correctly isn't the hard
+part; **resetting** it is. The starter already kept the secret in session state
+properly, so the "secret keeps changing" symptom wasn't a state bug at all — it
+was `check_guess` comparing numbers as text. Meanwhile the real state bug was
+the opposite problem: New Game reset `attempts` and `secret` but forgot
+`status`, so a value that was supposed to be temporary outlived its round and
+`st.stop()` killed the app on every subsequent rerun. Five keys went in, three
+came out. That's why I pulled the reset into a single `start_new_round()`
+function — with the reset written in one place, the initial game and the restart
+physically cannot disagree about which keys exist.
+
+The other thing that bit me is that `st.stop()` sits *above* the submit handler.
+Because the script re-runs top to bottom, a stale `status` doesn't just show a
+wrong message — it halts the script before the code that would fix it is ever
+reached. Order matters in a way it doesn't in an event-driven app.
 
 ---
 
 ## 5. Looking ahead: your developer habits
 
-- What is one habit or strategy from this project that you want to reuse in future labs or projects?
-  - This could be a testing habit, a prompting strategy, or a way you used Git.
-- What is one thing you would do differently next time you work with AI on a coding task?
-- In one or two sentences, describe how this project changed the way you think about AI generated code.
+**The habit I'm keeping: write the failing test first, and prove it fails.** The
+single most useful thing I did on this project was take each new test, run it
+against the *original* code with `git show HEAD:app.py`, and confirm it went red
+before my fix made it green. All five of my bug-targeting tests failed on the
+old code. That step caught something I'd otherwise have missed — my instinct was
+to test `check_guess(60, 50)`, but that passes on the broken code by luck,
+because `"60" > "50"` happens to be true alphabetically *and* numerically. Only
+`9` and `100` actually distinguish the two behaviours. A green suite means
+nothing if the tests would also be green on the bug.
+
+**What I'd do differently: check the AI's claim, not just its code.** Twice the
+code I got back ran fine and was still wrong. The AI wrote cross-file comments
+pointing at `app.py:36` when its own edits had already shifted that to line 37 —
+harmless, but it taught me that line numbers in comments rot instantly. The
+worse one was Hard difficulty: I accepted "Hard has a narrower range than
+Normal, that's backwards" and widened it to 1-200 without checking. Then I
+actually did the arithmetic and found Hard was *already* unwinnable — 5 attempts
+over 50 numbers when binary search needs 6 — and my "fix" had made it need 8.
+Both the original and my correction were wrong, and one line of `math.log2`
+would have told me that before I wrote either. Next time I'm computing the
+property before editing the constant, and I turned that into
+`test_every_difficulty_is_actually_winnable` so the ranges and attempt limits
+can't silently drift apart again.
+
+**How this changed how I think about AI code.** The scariest thing in this
+codebase wasn't a crash — it was `except TypeError:` quietly catching a real
+error and returning a confident, wrong answer. The game never broke; it just
+lied, and it looked polished the whole time: emoji hints, a score, balloons, a
+debug panel. I now read AI-generated code looking for where it *hides* failure
+rather than where it might throw, and I treat "it runs" and "the tests pass" as
+the beginning of verification rather than the end of it. The AI was genuinely
+good at explaining *why* something broke once I pointed it at a specific line —
+it found the string-comparison root cause faster than I would have. It was much
+less reliable at judging whether a fix belonged at that layer at all, which is
+the part I had to own.
